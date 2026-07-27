@@ -39,7 +39,7 @@ async def start(message: Message):
 
 @router.callback_query(lambda c: c.data == "info_more")
 async def process_more_info(callback: CallbackQuery):
-    await callback.message.answer("Вот более подробная информация о боте")
+    await callback.message.answer("Вот более подробная информация о боте:\n Бот помогает быстрее записаться на запись а также узнавать о всех новинках!")
     await callback.answer()
 
 @router.message(Command("help"))
