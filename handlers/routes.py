@@ -79,7 +79,7 @@ async def rasp(message: Message):
 async def send_photo(message: Message):
     try:
 
-        photo = FSInputFile('files/price.png')  
+        photo = FSInputFile('files/price.jpg')  
         await message.answer_photo(
             photo=photo,
             caption="Актуальные цены на услуги"  
