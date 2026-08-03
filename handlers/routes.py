@@ -6,18 +6,41 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile
 import aiosqlite
 import re
+from datetime import datetime, timedelta
 
 router = Router()
-ADMIN_ID = 5931039603  
+ADMIN_ID = 5931039603
+
 # ============ СОСТОЯНИЯ ДЛЯ ЗАПИСИ ============
 class BookingStates(StatesGroup):
+    choosing_category = State()
+    choosing_service = State()
     waiting_name = State()
     waiting_phone = State()
 
+# ============ УСЛУГИ ============
+SERVICES = {
+    "Женские": {
+        "Стрижки короткие": {"price": 1300, "duration": 30},
+        "Стрижки средние": {"price": 1800, "duration": 45},
+        "Стрижки длинные": {"price": 2000, "duration": 60},
+        "Укладка волос": {"price": 2000, "duration": 60},
+        "Окрашивание короткое": {"price": 1500, "duration": 120},
+        "Окрашивание среднее": {"price": 2000, "duration": 120},
+        "Окрашивание длинное": {"price": 2500, "duration": 150},
+        "Окрашивание сложное": {"price": 5000, "duration": 240},
+        "Уход за волосами": {"price": 1500, "duration": 60}
+    },
+    "Мужские": {
+        "Одна насадка": {"price": 500, "duration": 20},
+        "Две насадки": {"price": 600, "duration": 20},
+        "Модельная стрижка": {"price": 1000, "duration": 30}
+    }
+}
+
 # ============ РАСПИСАНИЕ ============
 SCHEDULE = {
-    "АДРЕС САЛОНА : Савушкина 124 корпус 1\n"
-    "Пт 31.07": {
+    "Чт 10.08": {
         "10:30": "свободно",
         "11:00": "свободно",
         "11:30": "свободно",
@@ -29,23 +52,11 @@ SCHEDULE = {
         "14:30": "свободно",
         "15:00": "свободно",
         "15:30": "свободно",
-        "16:00": "занято"
-    },
-    "Сб 01.08": {
-        "10:30": "занято",
-        "13:00": "свободно",
-        "13:30": "свободно",
-        "14:00": "свободно",
-        "14:30": "свободно",
-        "15:00": "свободно",
-        "15:30": "свободно",
         "16:00": "свободно",
-        "16:30": "свободно",
         "17:00": "свободно",
-        "17:30": "свободно",
         "18:00": "свободно"
     },
-    "Вс 02.08": {
+    "Пт 11.08": {
         "10:30": "свободно",
         "11:00": "свободно",
         "11:30": "свободно",
@@ -63,7 +74,80 @@ SCHEDULE = {
         "17:30": "свободно",
         "18:00": "свободно"
     },
-    "Пн 03.08": {
+    "Сб 12.08": {
+        "10:30": "свободно",
+        "11:00": "свободно",
+        "11:30": "свободно",
+        "12:00": "свободно",
+        "12:30": "свободно",
+        "13:00": "свободно",
+        "13:30": "свободно",
+        "14:00": "свободно",
+        "14:30": "свободно",
+        "15:00": "свободно",
+        "15:30": "свободно",
+        "16:00": "свободно",
+        "16:30": "свободно",
+        "17:00": "свободно",
+        "17:30": "свободно",
+        "18:00": "свободно"
+    },
+    "Вс 13.08": {
+        "10:30": "свободно",
+        "11:00": "свободно",
+        "11:30": "свободно",
+        "12:00": "свободно",
+        "12:30": "свободно",
+        "13:00": "свободно",
+        "13:30": "свободно",
+        "14:00": "свободно",
+        "14:30": "свободно",
+        "15:00": "свободно",
+        "15:30": "свободно",
+        "16:00": "свободно",
+        "16:30": "свободно",
+        "17:00": "свободно",
+        "17:30": "свободно",
+        "18:00": "свободно"
+    },
+    "Пн 14.08": {
+        "10:30": "свободно",
+        "11:00": "свободно",
+        "11:30": "свободно",
+        "12:00": "свободно",
+        "12:30": "свободно",
+        "13:00": "свободно",
+        "13:30": "свободно",
+        "14:00": "свободно",
+        "14:30": "свободно",
+        "15:00": "свободно",
+        "15:30": "свободно",
+        "16:00": "свободно",
+        "16:30": "свободно",
+        "17:00": "свободно",
+        "17:30": "свободно",
+        "18:00": "свободно"
+    },
+    "Вт 15.08": {
+        "10:30": "свободно",
+        "11:00": "свободно",
+        "11:30": "свободно",
+        "12:00": "свободно",
+        "12:30": "свободно",
+        "13:00": "свободно",
+        "13:30": "свободно",
+        "14:00": "свободно",
+        "14:30": "свободно",
+        "15:00": "свободно",
+        "15:30": "свободно",
+        "16:00": "свободно",
+        "16:30": "свободно",
+        "17:00": "свободно",
+        "17:30": "свободно",
+        "18:00": "свободно"
+    },
+    "Ср 16.08": "ВЫХОДНОЙ ДЕНЬ",
+    "Чт 17.08": {
         "10:30": "свободно",
         "11:00": "свободно",
         "11:30": "свободно",
@@ -94,39 +178,64 @@ async def init_db():
                 user_phone TEXT,
                 day TEXT,
                 time TEXT,
+                service TEXT,
+                duration INTEGER,
                 status TEXT DEFAULT 'pending'
             )
         """)
         await db.commit()
 
-async def save_booking(user_id, user_name, user_phone, day, time):
+async def save_booking(user_id, user_name, user_phone, day, time, service, duration):
     async with aiosqlite.connect("Lilith.sql") as db:
         await db.execute(
-            "INSERT INTO bookings (user_id, user_name, user_phone, day, time) VALUES (?, ?, ?, ?, ?)",
-            (user_id, user_name, user_phone, day, time)
+            "INSERT INTO bookings (user_id, user_name, user_phone, day, time, service, duration) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, user_name, user_phone, day, time, service, duration)
         )
         await db.commit()
 
-async def check_booking_exists(day, time):
+async def check_time_available(day, time, duration):
+    if day not in SCHEDULE:
+        return False
+    
+    if SCHEDULE[day] == "ВЫХОДНОЙ ДЕНЬ":
+        return False
+    
+    if time not in SCHEDULE[day]:
+        return False
+    
+    if SCHEDULE[day][time] == "занято":
+        return False
+    
+    time_obj = datetime.strptime(time, "%H:%M")
+    end_time = time_obj + timedelta(minutes=duration)
+    
     async with aiosqlite.connect("Lilith.sql") as db:
         cursor = await db.execute(
-            "SELECT id FROM bookings WHERE day = ? AND time = ? AND status != 'rejected'",
-            (day, time)
+            "SELECT time, duration FROM bookings WHERE day = ? AND status != 'rejected'",
+            (day,)
         )
-        result = await cursor.fetchone()
-        return result is not None
+        bookings = await cursor.fetchall()
+        
+        for booked_time, booked_duration in bookings:
+            booked_start = datetime.strptime(booked_time, "%H:%M")
+            booked_end = booked_start + timedelta(minutes=booked_duration)
+            
+            if (time_obj < booked_end and end_time > booked_start):
+                return False
+    
+    return True
 
 async def get_pending_bookings():
     async with aiosqlite.connect("Lilith.sql") as db:
         cursor = await db.execute(
-            "SELECT id, user_name, user_phone, day, time FROM bookings WHERE status = 'pending'"
+            "SELECT id, user_name, user_phone, day, time, service FROM bookings WHERE status = 'pending'"
         )
         return await cursor.fetchall()
 
 async def get_user_bookings(user_id):
     async with aiosqlite.connect("Lilith.sql") as db:
         cursor = await db.execute(
-            "SELECT day, time, status FROM bookings WHERE user_id = ? ORDER BY id DESC",
+            "SELECT day, time, service, status FROM bookings WHERE user_id = ? ORDER BY id DESC",
             (user_id,)
         )
         return await cursor.fetchall()
@@ -142,7 +251,7 @@ async def update_booking_status(booking_id, status):
 async def get_booking_by_id(booking_id):
     async with aiosqlite.connect("Lilith.sql") as db:
         cursor = await db.execute(
-            "SELECT id, user_id, user_name, user_phone, day, time, status FROM bookings WHERE id = ?",
+            "SELECT id, user_id, user_name, user_phone, day, time, service, status FROM bookings WHERE id = ?",
             (booking_id,)
         )
         return await cursor.fetchone()
@@ -160,30 +269,65 @@ def get_main_reply_keyboard():
     return keyboard
 
 def get_schedule_keyboard():
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Пт 31.07", callback_data="day_Пт 31.07")],
-            [InlineKeyboardButton(text="Сб 01.08", callback_data="day_Сб 01.08")],
-            [InlineKeyboardButton(text="Вс 02.08", callback_data="day_Вс 02.08")],
-            [InlineKeyboardButton(text="Пн 03.08", callback_data="day_Пн 03.08")]
-        ]
-    )
+    days = [day for day in SCHEDULE.keys() if SCHEDULE[day] != "ВЫХОДНОЙ ДЕНЬ"]
+    buttons = []
+    
+    for day in days:
+        buttons.append([InlineKeyboardButton(text=day, callback_data=f"day_{day}")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard
 
 async def get_time_keyboard(day):
+    if day not in SCHEDULE or SCHEDULE[day] == "ВЫХОДНОЙ ДЕНЬ":
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Назад", callback_data="back_schedule")]
+            ]
+        )
+        return keyboard
+    
     times = SCHEDULE.get(day, {})
     buttons = []
     
     for time, status in times.items():
         if status == "свободно":
-            is_booked = await check_booking_exists(day, time)
-            if not is_booked:
+            is_available = await check_time_available(day, time, 20)
+            if is_available:
                 buttons.append([InlineKeyboardButton(
                     text=time,
                     callback_data=f"time_{day}_{time.replace(':', '')}"
                 )])
     
     buttons.append([InlineKeyboardButton(text="Назад", callback_data="back_schedule")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    return keyboard
+
+def get_category_keyboard():
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Женские виды", callback_data="category_Женские")],
+            [InlineKeyboardButton(text="Мужские виды", callback_data="category_Мужские")],
+            [InlineKeyboardButton(text="Назад", callback_data="back_schedule")]
+        ]
+    )
+    return keyboard
+
+def get_services_keyboard(category):
+    services = SERVICES.get(category, {})
+    buttons = []
+    
+    for service, info in services.items():
+        duration_hours = info['duration'] // 60
+        duration_minutes = info['duration'] % 60
+        duration_text = f"{duration_hours}ч {duration_minutes}мин" if duration_hours > 0 else f"{duration_minutes}мин"
+        buttons.append([InlineKeyboardButton(
+            text=f"{service} - {info['price']}₽ ({duration_text})",
+            callback_data=f"service_{category}_{service}"
+        )])
+    
+    buttons.append([InlineKeyboardButton(text="Назад", callback_data="back_category")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard
@@ -244,14 +388,21 @@ async def about(message: Message):
 async def rasp(message: Message):
     text = "Актуальное расписание:\n\n"
     
-    for day, times in SCHEDULE.items():
+    for day, value in SCHEDULE.items():
+        if value == "ВЫХОДНОЙ ДЕНЬ":
+            text += f"{day}: ВЫХОДНОЙ\n\n"
+            continue
+        
         text += f"{day}:\n"
-        for time, status in times.items():
-            is_booked = await check_booking_exists(day, time)
-            if is_booked and status == "свободно":
+        for time, status in value.items():
+            if status == "занято":
                 text += f"  {time} - занято\n"
             else:
-                text += f"  {time} - {status}\n"
+                is_available = await check_time_available(day, time, 20)
+                if is_available:
+                    text += f"  {time} - свободно\n"
+                else:
+                    text += f"  {time} - занято\n"
         text += "\n"
     
     text += "Выберите день для записи:"
@@ -262,14 +413,22 @@ async def rasp(message: Message):
 async def select_day(callback: CallbackQuery):
     day = callback.data.replace("day_", "")
     
+    if day not in SCHEDULE or SCHEDULE[day] == "ВЫХОДНОЙ ДЕНЬ":
+        await callback.message.edit_text(
+            f"{day}\n\nВыходной день. Выберите другой день.",
+            reply_markup=get_schedule_keyboard()
+        )
+        await callback.answer()
+        return
+    
     text = f"{day}\n\nСвободное время:\n"
     times = SCHEDULE.get(day, {})
     
     free_times = []
     for time, status in times.items():
         if status == "свободно":
-            is_booked = await check_booking_exists(day, time)
-            if not is_booked:
+            is_available = await check_time_available(day, time, 20)
+            if is_available:
                 free_times.append(time)
     
     if not free_times:
@@ -293,8 +452,8 @@ async def select_time(callback: CallbackQuery, state: FSMContext):
     day = parts[0]
     time = f"{parts[1][:2]}:{parts[1][2:]}"
     
-    is_booked = await check_booking_exists(day, time)
-    if is_booked:
+    is_available = await check_time_available(day, time, 20)
+    if not is_available:
         await callback.answer("Это время уже занято!", show_alert=True)
         await callback.message.edit_text(
             "Это время уже занято. Выберите другое время.",
@@ -305,7 +464,90 @@ async def select_time(callback: CallbackQuery, state: FSMContext):
     await state.update_data(day=day, time=time)
     
     await callback.message.edit_text(
-        f"Вы выбрали: {day} в {time}\n\nВведите ваше имя:",
+        f"Вы выбрали: {day} в {time}\n\n"
+        "Выберите категорию услуги:",
+        reply_markup=get_category_keyboard()
+    )
+    await state.set_state(BookingStates.choosing_category)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "back_category")
+async def back_to_category(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    day = data.get("day")
+    time = data.get("time")
+    
+    await callback.message.edit_text(
+        f"Вы выбрали: {day} в {time}\n\n"
+        "Выберите категорию услуги:",
+        reply_markup=get_category_keyboard()
+    )
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data.startswith("category_"))
+async def select_category(callback: CallbackQuery, state: FSMContext):
+    category = callback.data.replace("category_", "")
+    await state.update_data(category=category)
+    
+    data = await state.get_data()
+    day = data.get("day")
+    time = data.get("time")
+    
+    await callback.message.edit_text(
+        f"Вы выбрали: {day} в {time}\n"
+        f"Категория: {category}\n\n"
+        "Выберите услугу:",
+        reply_markup=get_services_keyboard(category)
+    )
+    await state.set_state(BookingStates.choosing_service)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data.startswith("service_"))
+async def select_service(callback: CallbackQuery, state: FSMContext):
+    data_parts = callback.data.replace("service_", "").split("_")
+    category = data_parts[0]
+    service_name = "_".join(data_parts[1:])
+    
+    service_info = SERVICES.get(category, {}).get(service_name)
+    if not service_info:
+        await callback.answer("Услуга не найдена", show_alert=True)
+        return
+    
+    duration = service_info['duration']
+    price = service_info['price']
+    
+    data = await state.get_data()
+    day = data.get("day")
+    time = data.get("time")
+    
+    is_available = await check_time_available(day, time, duration)
+    if not is_available:
+        duration_hours = duration // 60
+        duration_minutes = duration % 60
+        duration_text = f"{duration_hours}ч {duration_minutes}мин" if duration_hours > 0 else f"{duration_minutes}мин"
+        
+        await callback.message.edit_text(
+            f"Извините, для услуги '{service_name}' требуется {duration_text}.\n"
+            f"Это время уже занято. Пожалуйста, выберите другое время.",
+            reply_markup=await get_time_keyboard(day)
+        )
+        await callback.answer()
+        return
+    
+    await state.update_data(service=service_name, duration=duration, price=price)
+    
+    duration_hours = duration // 60
+    duration_minutes = duration % 60
+    duration_text = f"{duration_hours}ч {duration_minutes}мин" if duration_hours > 0 else f"{duration_minutes}мин"
+    
+    await callback.message.edit_text(
+        f"Вы выбрали:\n"
+        f"День: {day}\n"
+        f"Время: {time}\n"
+        f"Услуга: {service_name}\n"
+        f"Длительность: {duration_text}\n"
+        f"Цена: {price}₽\n\n"
+        "Введите ваше имя:",
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(BookingStates.waiting_name)
@@ -358,11 +600,13 @@ async def get_phone(message: Message, state: FSMContext, bot):
     data = await state.get_data()
     day = data.get("day")
     time = data.get("time")
+    service = data.get("service")
+    duration = data.get("duration")
     
-    is_booked = await check_booking_exists(day, time)
-    if is_booked:
+    is_available = await check_time_available(day, time, duration)
+    if not is_available:
         await message.answer(
-            "Извините, это время уже занято другим пользователем.\n\n"
+            "Извините, это время уже занято с учетом длительности услуги.\n\n"
             "Пожалуйста, выберите другое время через /book"
         )
         await state.clear()
@@ -373,7 +617,9 @@ async def get_phone(message: Message, state: FSMContext, bot):
         user_name=data.get("user_name"),
         user_phone=phone,
         day=day,
-        time=time
+        time=time,
+        service=service,
+        duration=duration
     )
     
     async with aiosqlite.connect("Lilith.sql") as db:
@@ -384,8 +630,17 @@ async def get_phone(message: Message, state: FSMContext, bot):
         booking = await cursor.fetchone()
         booking_id = booking[0] if booking else None
     
+    duration_hours = duration // 60
+    duration_minutes = duration % 60
+    duration_text = f"{duration_hours}ч {duration_minutes}мин" if duration_hours > 0 else f"{duration_minutes}мин"
+    
     await message.answer(
-        f"Вы записаны на {day} в {time}\n\n"
+        f"Вы записаны!\n\n"
+        f"День: {day}\n"
+        f"Время: {time}\n"
+        f"Услуга: {service}\n"
+        f"Длительность: {duration_text}\n"
+        f"Цена: {data.get('price')}₽\n\n"
         f"Ожидайте подтверждения от администратора.",
         reply_markup=get_main_reply_keyboard()
     )
@@ -395,7 +650,10 @@ async def get_phone(message: Message, state: FSMContext, bot):
         f"Имя: {data.get('user_name')}\n"
         f"Телефон: {phone}\n"
         f"День: {day}\n"
-        f"Время: {time}"
+        f"Время: {time}\n"
+        f"Услуга: {service}\n"
+        f"Длительность: {duration_text}\n"
+        f"Цена: {data.get('price')}₽"
     )
     
     admin_keyboard = get_admin_booking_keyboard(booking_id) if booking_id else None
@@ -429,13 +687,13 @@ async def my_bookings(message: Message):
         return
     
     text = "Ваши записи:\n\n"
-    for day, time, status in bookings:
+    for day, time, service, status in bookings:
         status_text = {
             'pending': 'ожидает подтверждения',
             'confirmed': 'подтверждена',
             'rejected': 'отклонена'
         }.get(status, status)
-        text += f"{day} в {time} - {status_text}\n"
+        text += f"{day} в {time} - {service} - {status_text}\n"
     
     await message.answer(text, reply_markup=get_main_reply_keyboard())
 
@@ -459,13 +717,15 @@ async def admin_confirm(callback: CallbackQuery, bot):
         f"Запись подтверждена!\n\n"
         f"{booking[2]}\n"
         f"{booking[3]}\n"
-        f"{booking[4]} в {booking[5]}"
+        f"{booking[4]} в {booking[5]}\n"
+        f"Услуга: {booking[6]}"
     )
     
     try:
         await bot.send_message(
             booking[1],
-            f"Ваша запись на {booking[4]} в {booking[5]} ПОДТВЕРЖДЕНА!\n\nЖдем вас!"
+            f"Ваша запись на {booking[4]} в {booking[5]} ПОДТВЕРЖДЕНА!\n"
+            f"Услуга: {booking[6]}\n\nЖдем вас!"
         )
     except Exception as e:
         print(f"Не удалось уведомить пользователя: {e}")
@@ -492,13 +752,15 @@ async def admin_reject(callback: CallbackQuery, bot):
         f"Запись отклонена!\n\n"
         f"{booking[2]}\n"
         f"{booking[3]}\n"
-        f"{booking[4]} в {booking[5]}"
+        f"{booking[4]} в {booking[5]}\n"
+        f"Услуга: {booking[6]}"
     )
     
     try:
         await bot.send_message(
             booking[1],
-            f"Ваша запись на {booking[4]} в {booking[5]} ОТКЛОНЕНА.\n\nПопробуйте выбрать другое время."
+            f"Ваша запись на {booking[4]} в {booking[5]} ОТКЛОНЕНА.\n"
+            f"Услуга: {booking[6]}\n\nПопробуйте выбрать другое время."
         )
     except Exception as e:
         print(f"Не удалось уведомить пользователя: {e}")
@@ -518,8 +780,8 @@ async def admin_panel(message: Message):
         return
     
     text = "Новые записи:\n\n"
-    for id, name, phone, day, time in bookings:
-        text += f"#{id} {name} {phone} {day} {time}\n"
+    for id, name, phone, day, time, service in bookings:
+        text += f"#{id} {name} {phone} {day} {time} {service}\n"
     
     await message.answer(text)
 
@@ -527,14 +789,21 @@ async def admin_panel(message: Message):
 async def back_to_schedule(callback: CallbackQuery):
     text = "Актуальное расписание:\n\n"
     
-    for day, times in SCHEDULE.items():
+    for day, value in SCHEDULE.items():
+        if value == "ВЫХОДНОЙ ДЕНЬ":
+            text += f"{day}: ВЫХОДНОЙ\n\n"
+            continue
+        
         text += f"{day}:\n"
-        for time, status in times.items():
-            is_booked = await check_booking_exists(day, time)
-            if is_booked and status == "свободно":
+        for time, status in value.items():
+            if status == "занято":
                 text += f"  {time} - занято\n"
             else:
-                text += f"  {time} - {status}\n"
+                is_available = await check_time_available(day, time, 20)
+                if is_available:
+                    text += f"  {time} - свободно\n"
+                else:
+                    text += f"  {time} - занято\n"
         text += "\n"
     
     text += "Выберите день для записи:"
